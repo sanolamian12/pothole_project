@@ -1,0 +1,26 @@
+# 1. Build the image
+docker build -t pothole-app .
+
+# 2. Create the persistent lab container (Run this only ONCE)
+docker rm -f pothole_lab || true
+docker run -it \
+--name pothole_lab \
+--privileged \
+--net=host \
+--ipc=host \
+-v /dev:/dev \
+-v /run/udev:/run/udev:ro \
+-v /sys:/sys:ro \
+-v /etc/camera:/etc/camera:ro \
+-v /usr/share/libcamera:/usr/share/libcamera:ro \
+-v $(pwd):/app \
+pothole-app /bin/bash
+
+# 3. (After Creating) Waking-up the docker instance
+docker start pothole_lab
+
+# 4. Enter the instance
+docker exec -it pothole_lab /bin/bash
+
+# 5. Inside the container, just run the code
+python3 main.py
