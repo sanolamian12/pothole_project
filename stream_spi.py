@@ -135,7 +135,7 @@ MI48_SPI_LSBFIRST = False    # this appears to be a read-only on RPi
 MI48_SPI_CSHIGH = True
 # MI48_SPI_MAX_SPEED_HZ = 7800000
 # MI48_SPI_MAX_SPEED_HZ = 15600000
-MI48_SPI_MAX_SPEED_HZ = 400000
+MI48_SPI_MAX_SPEED_HZ = 2000000
 MI48_SPI_CS_DELAY = 0.001   # delay between asserting/deasserting CS_N and initiating/stopping clock/data
 
 

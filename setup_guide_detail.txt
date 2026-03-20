@@ -42,6 +42,8 @@ Default high-speed SPI fails on RPi due to system jitter. Use these values:
 # SPI 속도를 2MHz에서 0.5MHz로 낮춰 노이즈 저항력 확보
 MI48_SPI_MAX_SPEED_HZ = 500000 
 
+변경 전: MI48_SPI_MAX_SPEED_HZ = 400000 (안정적이지만 느림)
+변경 후: MI48_SPI_MAX_SPEED_HZ = 2000000 (2MHz - 최적의 속도와 안정성)
 # Chip Select 활성화 후 센서 응답 대기 시간을 10배 늘림 (1ms -> 10ms)
 MI48_SPI_CS_DELAY = 0.01 
 
