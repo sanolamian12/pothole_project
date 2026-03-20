@@ -1,0 +1,35 @@
+===========================================================
+MI48 Thermal Camera Stability Setup Guide (Raspberry Pi)
+===========================================================
+Target Repo: https://github.com/sanolamian12/pothole_project
+Last Updated: 2026-03-20
+Status: Stable (Verified with Hand-Heart Gesture)
+
+1. Hardware Configuration (Golden Settings)
+-------------------------------------------
+- SPI Clock Speed: 500,000 Hz (0.5MHz) 
+- SPI CS Delay: 0.01s (10ms)
+- GPIO Pins (BCM):
+    * CS_N: GPIO 7
+    * Reset: GPIO 23
+    * Data_Ready: False (Polling Mode)
+- I2C Address: 0x40
+
+2. Software Implementation Logic
+--------------------------------
+- Method: Periodic File Write (To avoid SPI timing jitter)
+- Update Interval: 3.0 seconds
+- Image Save Path: /home/pi/cams/thermal_live.jpg
+- Visualization: 20.0C ~ 40.0C Clipping, 8x Upscale, INTER_CUBIC
+
+3. Troubleshooting History
+--------------------------
+- Symptom: Constant 'Frame CRC error' during cv.imshow streaming.
+- Cause: GUI overhead interrupting SPI interrupts on Raspberry Pi.
+- Solution: Disabled real-time GUI window and switched to 'cv.imwrite'.
+- Result: Stable 3-second interval frame updates without data corruption.
+
+4. Dependencies
+---------------
+- Python 3.11+, numpy, opencv-python, gpiozero, spidev, smbus2
+===========================================================

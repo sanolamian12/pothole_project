@@ -1,0 +1,162 @@
+================================================================================
+MI48 THERMAL CAMERA STABILIZATION & DEPLOYMENT GUIDE (FINAL COMBINED)
+================================================================================
+Project: Pothole Detection - Thermal Module
+Target Hardware: Raspberry Pi 4 / MI48 (Meridian Innovation)
+Date: 2026-03-20
+Status: STABLE (Verified with 3s interval semi-streaming)
+
+--------------------------------------------------------------------------------
+1. HARDWARE VERIFICATION (I2C & REGISTER DUMP)
+--------------------------------------------------------------------------------
+* I2C Detection:
+  $ sudo i2cdetect -y 1
+  -> Address 0x40 must be present.
+
+* Register Dump (Serial ID Verification):
+  $ sudo i2cdump -y 1 0x40
+  -> Check 'e0' row: "15 2e 01 03 47 02" (Matches SN152e01034702)
+
+* Wiring Note:
+  Keep SPI signal lines (CLK, MISO) away from power cables and cooling fans 
+  to minimize EMI noise.
+
+--------------------------------------------------------------------------------
+2. CRITICAL SPI COMMUNICATION SETTINGS (THE GOLDEN VALUES)
+--------------------------------------------------------------------------------
+Default high-speed SPI fails on RPi due to system jitter. Use these values:
+
+* SPI Speed: 400,000 Hz ~ 500,000 Hz (Max 0.5MHz)
+  MI48_SPI_MAX_SPEED_HZ = 400000
+
+* CS Delay: 0.01 (10ms) or at least 0.001 (1ms)
+  MI48_SPI_CS_DELAY = 0.01
+  (Reason: Allows sensor buffer to stabilize after Chip Select assertion)
+
+* GPIO Mapping (BCM):
+  - CS_N: GPIO 7
+  - Reset: GPIO 23
+  - Data_Ready: GPIO 24 (See Chapter 3 for usage)
+
+--- Python code ---
+# SPI 속도를 2MHz에서 0.5MHz로 낮춰 노이즈 저항력 확보
+MI48_SPI_MAX_SPEED_HZ = 500000 
+
+# Chip Select 활성화 후 센서 응답 대기 시간을 10배 늘림 (1ms -> 10ms)
+MI48_SPI_CS_DELAY = 0.01 
+
+# GUI 부하를 피하기 위해 디스플레이 변수 설정
+# 터미널 명령어: export DISPLAY=:0
+--------------------------------------------------------------------------------
+3. DATA ACQUISITION STRATEGY (POLLING MODE)
+--------------------------------------------------------------------------------
+To prevent system hang/freezing, disable hardware interrupts and use Polling.
+
+* Implementation:
+  use_data_ready_pin = False 
+  mi48_data_ready = None  # Required to avoid library conflicts
+
+* Polling Logic:
+  Instead of waiting for a pin signal, use a software 'time.sleep(3.0)' loop.
+
+--------------------------------------------------------------------------------
+4. SOFTWARE ARCHITECTURE: SEMI-STREAMING (FILE-BASED)
+--------------------------------------------------------------------------------
+Crucial: 'cv.imshow' interrupts SPI timing. Use 'cv.imwrite' to stabilize.
+
+* Verified Stable Loop Logic:
+  ---------------------------------------------------------
+  SAVE_PATH = "/home/pi/cams/thermal_live.jpg"
+
+  while True:
+      time.sleep(3.0)  # Wait for sensor sync
+
+      mi48_spi_cs_n.on()
+      time.sleep(MI48_SPI_CS_DELAY)
+      data, header = mi48.read()
+      time.sleep(MI48_SPI_CS_DELAY)
+      mi48_spi_cs_n.off()
+
+      if data is None:
+          continue # Ignore single frame errors
+
+      # Process Image (See Chapter 5)
+      cv.imwrite(SAVE_PATH, img_color)
+  ---------------------------------------------------------
+
+--------------------------------------------------------------------------------
+5. IMAGE PROCESSING & VISUALIZATION
+--------------------------------------------------------------------------------
+Optimized for 80x48 sensor to detect human shapes (e.g., Heart gesture).
+
+* Clipping (Temperature Range): 
+  T_min = 20.0, T_max = 40.0 (Focus on body temperature)
+
+* Normalization:
+  img8u = ((img_clipped - T_min) / (T_max - T_min) * 255).astype(np.uint8)
+
+* Upscaling:
+  - Factor: 8x (80x48 -> 640x384)
+  - Interpolation: cv.INTER_CUBIC (Smoother gradients than INTER_LINEAR)
+
+* Colormap: 
+  cv.COLORMAP_JET (Blue-to-Red thermal standard)
+
+--- Python code ---
+SAVE_PATH = "/home/pi/cams/thermal_live.jpg"
+
+while True:
+    time.sleep(3.0)  # 3초 간격으로 통신 안정화 대기
+
+    mi48_spi_cs_n.on()
+    time.sleep(MI48_SPI_CS_DELAY)
+    data, header = mi48.read()
+    time.sleep(MI48_SPI_CS_DELAY)
+    mi48_spi_cs_n.off()
+
+    if data is None:
+        # CRC 에러가 나더라도 무시하고 다음 프레임을 시도함
+        continue
+
+    # 이미지 변환 로직 (20~40도 스케일링)
+    img = data_to_frame(data, mi48.fpa_shape)
+    T_min, T_max = 20.0, 40.0
+    img_clipped = np.clip(img, T_min, T_max)
+    img8u = ((img_clipped - T_min) / (T_max - T_min) * 255).astype(np.uint8)
+
+    # 8배 확대 및 컬러맵 적용
+    img_resized = cv.resize(img8u, (80*8, 48*8), interpolation=cv.INTER_CUBIC)
+    img_color = cv.applyColorMap(img_resized, cv.COLORMAP_JET)
+
+    # 파일로 저장 (OpenCV 창 대신 이 파일을 이미지 뷰어로 확인)
+    cv.imwrite(SAVE_PATH, img_color)
+    print(f"📸 [Updated] Max: {np.max(data):.1f}C | {time.strftime('%H:%M:%S')}")
+--------------------------------------------------------------------------------
+6. TROUBLESHOOTING & ERROR TOLERANCE
+--------------------------------------------------------------------------------
+* "Frame CRC error" in Logs:
+  If images are still updating and Max Temp is realistic (e.g., 30C), IGNORE.
+  This is minor bit-flipping due to RPi SPI limitations.
+
+* Clean Exit (Signal Handler):
+  Ensure 'mi48.stop()' is called on SIGINT (Ctrl+C) to power down the sensor.
+
+* Display Error:
+  If running via SSH, always 'export DISPLAY=:0' before execution.
+
+--------------------------------------------------------------------------------
+7. DOCKER DEPLOYMENT CHECKLIST
+--------------------------------------------------------------------------------
+* Mode: --privileged (Mandatory for GPIO/SPI access)
+* Device Mapping:
+  - /dev/spidev0.0
+  - /dev/i2c-1
+  - /dev/gpiomem
+* Volumes:
+  - Map host folder to container to access 'thermal_live.jpg' via Web Server.
+* Env:
+  - LOGLEVEL=CRITICAL (To suppress constant CRC error logs)
+
+================================================================================
+END OF REPORT
+================================================================================
