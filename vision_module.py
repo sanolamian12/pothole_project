@@ -92,8 +92,8 @@ class VisionSystem:
                         img8u = ((img_clipped - THERMAL_MIN_TEMP) / (THERMAL_MAX_TEMP - THERMAL_MIN_TEMP) * 255).astype(np.uint8)
                         
                         # 순환 이동 적용 및 저장
-                        shifted_img = np.roll(img8u, shift=-8, axis=1)
-                        self.latest_thermal_img = shifted_img
+                        #shifted_img = np.roll(img8u, shift=-8, axis=1)
+                        self.latest_thermal_img = img8u
                         
                         # [실시간 덮어쓰기]
                         cv2.imwrite(f"{BASE_DATA_DIR}/live_thermal.jpg", shifted_img)
